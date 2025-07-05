@@ -24,6 +24,7 @@ jobs:
           - userName: q215613905
             repoName: TVBoxOS
             branchName: main
+            java_ver: 11  # 添加Java版本定义
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -91,37 +92,31 @@ jobs:
           sed -i '$a\RELEASE_KEY_PASSWORD=TVBoxOSC'         ./gradle.properties
           sed -i 's/^#\(org.gradle.jvmargs=.*\)/\1/'        ./gradle.properties
       - uses: actions/setup-java@v4
-        if: ${{ matrix.java_ver }}
+        if: ${{ matrix.java_ver }}  # 这里使用矩阵中定义的java_ver
         with:
           distribution: temurin
           java-version: ${{ matrix.java_ver }}
       - uses: gradle/actions/setup-gradle@v4
         if: ${{ env.commit }}
-        - name: Checkout Source Code
-         if: ${{ env.commit }}
-         run: |
-           git clone ${{ env.upStream }} TVBoxOSC
-           cd TVBoxOSC
-           git checkout ${{ env.commit }}
-           echo "tag=$(git log --date=format:'%Y%m%d-%H%M' --pretty=format:%cd ${{ env.commitS }} -1)" >> $GITHUB_ENV
-        - name: Create local.properties
-         if: ${{ env.commit }}
-         working-directory: TVBoxOSC
-         run: |
-           echo "sdk.dir=$ANDROID_HOME" > local.properties
+      - name: Create local.properties
+        if: ${{ env.commit }}
+        working-directory: TVBoxOSC
+        run: |
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
       - name: Build With Gradle
         if: ${{ env.commit }}
         working-directory: TVBoxOSC
         run: |
           chmod +x gradlew
-          ./gradlew assemblerelease --build-cache --parallel --daemon --warning-mode all
+          ./gradlew assembleRelease --build-cache --parallel --daemon --warning-mode all
       - name: Prepare App
         if: ${{ env.commit }}
         working-directory: TVBoxOSC
         run: |
           rm -rf apk/
           mkdir -p apk/
-          for file in `find ~ -name "*release*.apk" -print`; do
+          # 在项目目录中查找apk文件，而不是在home目录
+          for file in $(find . -path "*/outputs/apk/*release*.apk"); do
             # 获取文件的基本名称
             base=$(basename "$file")
             # 如果文件是 TVBox_ 开头
