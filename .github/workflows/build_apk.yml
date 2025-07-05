@@ -1,4 +1,4 @@
-name: TVBox
+name: Test
 
 on:
   schedule:
@@ -24,7 +24,6 @@ jobs:
           - userName: q215613905
             repoName: TVBoxOS
             branchName: main
-            java_ver: 11  # 添加Java版本定义
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -98,39 +97,19 @@ jobs:
           java-version: ${{ matrix.java_ver }}
       - uses: gradle/actions/setup-gradle@v4
         if: ${{ env.commit }}
-      # 添加 Python 设置
-      - name: Set up Python
-        if: ${{ env.commit }}
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.8'
-      - name: Configure Python for Chaquopy
-        if: ${{ env.commit }}
-        working-directory: TVBoxOSC
-        run: |
-          echo "python.dir=/opt/hostedtoolcache/Python/3.8.18/x64" >> local.properties
-          echo "chaquopy.buildPython=/opt/hostedtoolcache/Python/3.8.18/x64/bin/python3" >> gradle.properties
-          # 确保 pyramid 模块的 build.gradle 使用正确的配置
-          sed -i 's#buildPython ".*"#buildPython "/opt/hostedtoolcache/Python/3.8.18/x64/bin/python3"#' pyramid/build.gradle
-      - name: Create local.properties
-        if: ${{ env.commit }}
-        working-directory: TVBoxOSC
-        run: |
-          echo "sdk.dir=$ANDROID_HOME" > local.properties
       - name: Build With Gradle
         if: ${{ env.commit }}
         working-directory: TVBoxOSC
         run: |
           chmod +x gradlew
-          ./gradlew assembleRelease --build-cache --parallel --daemon --warning-mode all
+          ./gradlew assemblerelease --build-cache --parallel --daemon --warning-mode all
       - name: Prepare App
         if: ${{ env.commit }}
         working-directory: TVBoxOSC
         run: |
           rm -rf apk/
           mkdir -p apk/
-          # 在项目目录中查找apk文件，而不是在home目录
-          for file in $(find . -path "*/outputs/apk/*release*.apk"); do
+          for file in `find ~ -name "*release*.apk" -print`; do
             # 获取文件的基本名称
             base=$(basename "$file")
             # 如果文件是 TVBox_ 开头
