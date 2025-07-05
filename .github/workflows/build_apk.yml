@@ -49,6 +49,11 @@ jobs:
           cd TVBoxOSC
           git checkout ${{ env.commit }}
           echo "tag=$(git log --date=format:'%Y%m%d-%H%M' --pretty=format:%cd ${{ env.commitS }} -1)" >> $GITHUB_ENV
+      # 添加Python环境设置
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.8'  # 使用项目要求的Python 3.8版本
       - name: Extra Modify
         if: ${{ env.commit }}
         working-directory: TVBoxOSC
@@ -69,6 +74,10 @@ jobs:
           else
             sed -i "/jitpack.io/a\        maven { url 'https://o0halflife0o.github.io/crosswalk/releases/crosswalk/android/maven2' }" build.gradle
           fi
+          # 添加Python路径配置
+          echo "配置Python路径"
+          python_path=$(which python)
+          sed -i "s|buildPython = .*|buildPython = \"$python_path\"|" pyramid/build.gradle
       - name: Compress Source Code
         if: ${{ env.commit }}
         working-directory: TVBoxOSC
@@ -90,10 +99,8 @@ jobs:
           sed -i '$a\RELEASE_STORE_PASSWORD=TVBoxOSC'       ./gradle.properties
           sed -i '$a\RELEASE_KEY_PASSWORD=TVBoxOSC'         ./gradle.properties
           sed -i 's/^#\(org.gradle.jvmargs=.*\)/\1/'        ./gradle.properties
-      # 添加Android SDK安装步骤
       - name: Setup Android SDK
         uses: android-actions/setup-android@v2
-      # 创建缺失的local.properties文件
       - name: Create local.properties
         if: ${{ env.commit }}
         working-directory: TVBoxOSC
