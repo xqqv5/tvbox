@@ -70,11 +70,6 @@ jobs:
           else
             sed -i "/jitpack.io/a\        maven { url 'https://o0halflife0o.github.io/crosswalk/releases/crosswalk/android/maven2' }" build.gradle
           fi
-      - name: Disable pyramid module  # 修正此处：移除多余连字符
-        if: ${{ env.commit }}
-        working-directory: TVBoxOSC
-        run: |
-          sed -i '/include.*:pyramid.*/d' settings.gradle
       - name: Compress Source Code
         if: ${{ env.commit }}
         working-directory: TVBoxOSC
@@ -97,7 +92,7 @@ jobs:
           sed -i '$a\RELEASE_KEY_PASSWORD=TVBoxOSC'         ./gradle.properties
           sed -i 's/^#\(org.gradle.jvmargs=.*\)/\1/'        ./gradle.properties
       - uses: actions/setup-java@v4
-        if: ${{ matrix.java_ver }}  # 修正条件表达式
+        if: ${{ matrix.java_ver }}
         with:
           distribution: temurin
           java-version: ${{ matrix.java_ver }}
@@ -109,11 +104,14 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: '3.8'
-      - name: Configure Python path
+      - name: Configure Python for Chaquopy
         if: ${{ env.commit }}
         working-directory: TVBoxOSC
         run: |
-          echo "chaquopy.buildPython=$(which python3)" >> gradle.properties
+          echo "python.dir=/opt/hostedtoolcache/Python/3.8.18/x64" >> local.properties
+          echo "chaquopy.buildPython=/opt/hostedtoolcache/Python/3.8.18/x64/bin/python3" >> gradle.properties
+          # 确保 pyramid 模块的 build.gradle 使用正确的配置
+          sed -i 's#buildPython ".*"#buildPython "/opt/hostedtoolcache/Python/3.8.18/x64/bin/python3"#' pyramid/build.gradle
       - name: Create local.properties
         if: ${{ env.commit }}
         working-directory: TVBoxOSC
