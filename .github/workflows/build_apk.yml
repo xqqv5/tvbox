@@ -52,10 +52,10 @@ jobs:
           cmake;3.22.1
         accept-android-sdk-licenses: true
 
-    - name: Configure Chaquopy with apply from
+    - name: Configure Chaquopy with apply from (fixed path)
       run: |
-        # 创建独立的 Chaquopy 配置文件
-        cat << 'EOF' > chaquopy-config.gradle
+        # 在正确位置创建 Chaquopy 配置文件
+        cat << 'EOF' > app/chaquopy-config.gradle
         android {
             defaultConfig {
                 python {
@@ -74,7 +74,7 @@ jobs:
         }
         EOF
         
-        # 在 app/build.gradle 开头应用这个配置
+        # 在 app/build.gradle 开头应用这个配置，使用相对路径
         sed -i '1i apply from: "chaquopy-config.gradle"' app/build.gradle
         
         # 修复关键版本设置
@@ -85,7 +85,9 @@ jobs:
         echo "===== app/build.gradle (前几行) ====="
         head -n 5 app/build.gradle
         echo "===== chaquopy-config.gradle ====="
-        cat chaquopy-config.gradle
+        cat app/chaquopy-config.gradle
+        echo "===== Current directory structure ====="
+        ls -l app/
 
     - name: Cache Gradle dependencies
       uses: actions/cache@v4
@@ -100,6 +102,13 @@ jobs:
     - name: Build APK
       run: |
         export GRADLE_OPTS="-Dorg.gradle.daemon=false -Xmx4096m"
+        # 添加调试信息
+        echo "===== PYTHON_PATH ====="
+        echo $PYTHON_PATH
+        echo "===== Current directory ====="
+        pwd
+        echo "===== app directory contents ====="
+        ls -l app/
         ./gradlew clean :app:assembleDebug --stacktrace --info
 
     - name: Upload APK artifact
