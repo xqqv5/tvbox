@@ -1,119 +1,39 @@
-name: Build TVBoxOS APK
-
-on:
-  push:
-    branches: [ main ]
-  workflow_dispatch:
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        submodules: recursive
-
-    - name: Fix gradlew permissions
-      run: |
-        chmod +x gradlew
-        ls -l gradlew
-
-    - name: Set up Python 3.8
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.8'
+- name: Directly configure Chaquopy
+  run: |
+    # 在 android/defaultConfig 块内添加 Python 配置
+    awk -v python_path="$PYTHON_PATH" '
+    /android *{/ {
+        print $0
+        in_android = 1
+        next
+    }
+    in_android && /defaultConfig *{/ {
+        print $0
+        print "            python {"
+        print "                buildPython \"" python_path "\""
+        print "                pipOptions.extraIndexUrl \"https://chaquo.com/pypi-7.0\""
+        print "                staticProxy \"chaquopy.utils\""
+        print "            }"
+        print "            ndk {"
+        print "                abiFilters \"armeabi-v7a\", \"arm64-v8a\", \"x86\", \"x86_64\""
+        print "            }"
+        next
+    }
+    /dependencies *{/ {
+        print $0
+        print "    implementation \"com.chaquo.python:gradle:12.0.0\""
+        next
+    }
+    { print }' app/build.gradle > app/build.gradle.tmp
     
-    - name: Get Python path
-      run: |
-        python_path=$(which python3)
-        echo "PYTHON_PATH=$python_path" >> $GITHUB_ENV
-
-    - name: Create local.properties
-      run: |
-        echo "sdk.dir=$ANDROID_HOME" > local.properties
-        echo "ndk.dir=$ANDROID_HOME/ndk/25.1.8937393" >> local.properties
-        cat local.properties
-
-    - name: Set up JDK 17
-      uses: actions/setup-java@v4
-      with:
-        java-version: '17'
-        distribution: 'temurin'
-
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
-      with:
-        packages: |
-          platforms;android-33 
-          build-tools;34.0.0 
-          ndk;25.1.8937393 
-          cmake;3.22.1
-        accept-android-sdk-licenses: true
-
-    - name: Configure Chaquopy with apply from (fixed path)
-      run: |
-        # 在正确位置创建 Chaquopy 配置文件
-        cat << 'EOF' > app/chaquopy-config.gradle
-        android {
-            defaultConfig {
-                python {
-                    buildPython "$System.env.PYTHON_PATH"
-                    pipOptions.extraIndexUrl "https://chaquo.com/pypi-7.0"
-                    staticProxy "chaquopy.utils"
-                }
-                ndk {
-                    abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
-                }
-            }
-        }
-        
-        dependencies {
-            implementation "com.chaquo.python:gradle:12.0.0"
-        }
-        EOF
-        
-        # 在 app/build.gradle 开头应用这个配置，使用相对路径
-        sed -i '1i apply from: "chaquopy-config.gradle"' app/build.gradle
-        
-        # 修复关键版本设置
-        sed -i 's/compileSdkVersion [0-9]*/compileSdkVersion 33/' app/build.gradle
-        sed -i 's/buildToolsVersion .*/buildToolsVersion "34.0.0"/' app/build.gradle
-        
-        # 验证修改
-        echo "===== app/build.gradle (前几行) ====="
-        head -n 5 app/build.gradle
-        echo "===== chaquopy-config.gradle ====="
-        cat app/chaquopy-config.gradle
-        echo "===== Current directory structure ====="
-        ls -l app/
-
-    - name: Cache Gradle dependencies
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.gradle/caches
-          ~/.gradle/wrapper
-        key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-        restore-keys: |
-          gradle-${{ runner.os }}-
-
-    - name: Build APK
-      run: |
-        export GRADLE_OPTS="-Dorg.gradle.daemon=false -Xmx4096m"
-        # 添加调试信息
-        echo "===== PYTHON_PATH ====="
-        echo $PYTHON_PATH
-        echo "===== Current directory ====="
-        pwd
-        echo "===== app directory contents ====="
-        ls -l app/
-        ./gradlew clean :app:assembleDebug --stacktrace --info
-
-    - name: Upload APK artifact
-      if: success()
-      uses: actions/upload-artifact@v4
-      with:
-        name: TVBoxOS-APK
-        path: app/build/outputs/apk/debug/*.apk
+    mv app/build.gradle.tmp app/build.gradle
+    
+    # 修复关键版本设置
+    sed -i 's/compileSdkVersion [0-9]*/compileSdkVersion 33/' app/build.gradle
+    sed -i 's/buildToolsVersion .*/buildToolsVersion "34.0.0"/' app/build.gradle
+    
+    # 验证修改
+    echo "===== app/build.gradle (android/defaultConfig block) ====="
+    grep -A 20 'android *{' app/build.gradle
+    echo "===== dependencies block ====="
+    grep -A 5 'dependencies *{' app/build.gradle
