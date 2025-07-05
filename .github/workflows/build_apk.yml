@@ -52,10 +52,10 @@ jobs:
           cmake;3.22.1
         accept-android-sdk-licenses: true
 
-    - name: Configure Chaquopy safely
+    - name: Configure Chaquopy with apply from
       run: |
-        # 完全重写配置方法 - 使用临时文件
-        cat << 'EOF' > chaquopy.gradle
+        # 创建独立的 Chaquopy 配置文件
+        cat << 'EOF' > chaquopy-config.gradle
         android {
             defaultConfig {
                 python {
@@ -74,16 +74,18 @@ jobs:
         }
         EOF
         
-        # 将配置追加到build.gradle末尾
-        cat chaquopy.gradle >> app/build.gradle
+        # 在 app/build.gradle 开头应用这个配置
+        sed -i '1i apply from: "chaquopy-config.gradle"' app/build.gradle
         
         # 修复关键版本设置
         sed -i 's/compileSdkVersion [0-9]*/compileSdkVersion 33/' app/build.gradle
         sed -i 's/buildToolsVersion .*/buildToolsVersion "34.0.0"/' app/build.gradle
         
         # 验证修改
-        echo "===== app/build.gradle (末尾添加内容) ====="
-        tail -n 20 app/build.gradle
+        echo "===== app/build.gradle (前几行) ====="
+        head -n 5 app/build.gradle
+        echo "===== chaquopy-config.gradle ====="
+        cat chaquopy-config.gradle
 
     - name: Cache Gradle dependencies
       uses: actions/cache@v4
