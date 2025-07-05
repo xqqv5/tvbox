@@ -49,11 +49,10 @@ jobs:
           cd TVBoxOSC
           git checkout ${{ env.commit }}
           echo "tag=$(git log --date=format:'%Y%m%d-%H%M' --pretty=format:%cd ${{ env.commitS }} -1)" >> $GITHUB_ENV
-      # 添加Python环境设置
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.8'  # 使用项目要求的Python 3.8版本
+          python-version: '3.8'
       - name: Extra Modify
         if: ${{ env.commit }}
         working-directory: TVBoxOSC
@@ -74,15 +73,25 @@ jobs:
           else
             sed -i "/jitpack.io/a\        maven { url 'https://o0halflife0o.github.io/crosswalk/releases/crosswalk/android/maven2' }" build.gradle
           fi
-          # 添加Python路径配置
-          echo "配置Python路径"
+          # 彻底修复Python路径问题
+          echo "彻底修复Python路径配置"
           python_path=$(which python)
-          sed -i "s|buildPython = .*|buildPython = \"$python_path\"|" pyramid/build.gradle
+          # 1. 移除所有Windows路径引用
+          find . -name '*.gradle' -exec sed -i "s|D:/Programs/Python/Python38|$python_path|g" {} \;
+          # 2. 更新所有buildPython设置
+          find . -name '*.gradle' -exec sed -i "s|buildPython = .*|buildPython = \"$python_path\"|g" {} \;
+          # 3. 确保pyramid模块使用正确路径
+          if [ -f pyramid/build.gradle ]; then
+            sed -i "s|buildPython = .*|buildPython = \"$python_path\"|" pyramid/build.gradle
+            echo "android { buildPython \"$python_path\" }" >> pyramid/build.gradle
+          fi
+          # 4. 打印最终配置确认
+          echo "最终Python路径配置:"
+          grep -r "buildPython" . || true
       - name: Compress Source Code
         if: ${{ env.commit }}
         working-directory: TVBoxOSC
         run: |
-          #zip -q -x ".git/*" -x  ".github/*" -r sourceCode-${{ env.commitS }}.zip .
           tar -cJf sourceCode-${{ env.commitS }}.tar.xz --exclude=.git --exclude=.github *
       - name: Release Apk Sign
         if: ${{ env.commit }}
@@ -106,10 +115,9 @@ jobs:
         working-directory: TVBoxOSC
         run: echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
       - uses: actions/setup-java@v4
-        if: ${{ matrix.java_ver }}
         with:
           distribution: temurin
-          java-version: ${{ matrix.java_ver }}
+          java-version: 11
       - uses: gradle/actions/setup-gradle@v4
         if: ${{ env.commit }}
       - name: Build With Gradle
@@ -117,24 +125,17 @@ jobs:
         working-directory: TVBoxOSC
         run: |
           chmod +x gradlew
-          ./gradlew assemblerelease --build-cache --parallel --daemon --warning-mode all
+          ./gradlew assemblerelease --build-cache --parallel --daemon --warning-mode all --stacktrace
       - name: Prepare App
         if: ${{ env.commit }}
         working-directory: TVBoxOSC
         run: |
           rm -rf apk/
           mkdir -p apk/
-          for file in `find ~ -name "*release*.apk" -print`; do
-            # 获取文件的基本名称
-            base=$(basename "$file")
-            # 如果文件是 TVBox_ 开头
-            if [[ "$base" == TVBox_* ]]; then
-              new_base=$(echo "$base" | sed "s/release/${{ matrix.userName }}_${{ env.tag }}/")
-            else
-              new_base="TVBox_${{ matrix.userName }}_${{ env.tag }}.apk"
-            fi
-            # 移动并重命名文件
-            mv "$file" "apk/$new_base"
+          find . -name "*.apk" -exec mv {} apk/ \;
+          for apk in apk/*.apk; do
+            new_name="TVBox_${{ matrix.userName }}_${{ env.tag }}.apk"
+            mv "$apk" "apk/$new_name"
           done
           mv sourceCode-${{ env.commitS }}.* apk/
       - name: Release Note
