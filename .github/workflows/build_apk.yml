@@ -1,4 +1,4 @@
-name: tvbox
+name: TVBox
 
 on:
   schedule:
@@ -25,11 +25,6 @@ jobs:
             repoName: TVBoxOS
             branchName: main
     steps:
-     - name: Create local.properties
-         if: ${{ env.commit }}
-          working-directory: TVBoxOSC
-          run: |
-            touch local.properties
       - name: Checkout
         uses: actions/checkout@v4
         with:
