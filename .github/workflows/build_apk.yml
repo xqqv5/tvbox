@@ -70,6 +70,11 @@ jobs:
           else
             sed -i "/jitpack.io/a\        maven { url 'https://o0halflife0o.github.io/crosswalk/releases/crosswalk/android/maven2' }" build.gradle
           fi
+      -name: Disable pyramid module
+        if: ${{ env.commit }}
+        working-directory: TVBoxOSC
+        run: |
+          sed -i '/include.*:pyramid.*/d' settings.gradle
       - name: Compress Source Code
         if: ${{ env.commit }}
         working-directory: TVBoxOSC
