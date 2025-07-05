@@ -55,21 +55,28 @@ jobs:
         accept-android-sdk-licenses: true
         log-accepted-android-sdk-licenses: true
 
-    # 修复项目结构并覆盖Chaquopy配置
+    # 修复项目结构并正确配置Chaquopy
     - name: Fix project structure and Chaquopy config
       run: |
         mkdir -p pyramid/build
         
-        # 覆盖Chaquopy的Python路径配置
-        echo "android.defaultConfig.chaquopy.buildPython \"$PYTHON_PATH\"" >> pyramid/build.gradle
-        echo "android.defaultConfig.chaquopy.pipOptions.extraIndexUrl \"https://chaquo.com/pypi-7.0\"" >> pyramid/build.gradle
+        # 在 android 块内添加 Chaquopy 配置
+        # 使用 sed 在 android { 后插入配置
+        sed -i '/android {/a \
+    defaultConfig { \
+        python { \
+            buildPython "'"$PYTHON_PATH"'" \
+            pipOptions.extraIndexUrl "https://chaquo.com/pypi-7.0" \
+        } \
+    }' pyramid/build.gradle
         
         echo "org.gradle.caching=true" >> gradle.properties
         echo "org.gradle.parallel=true" >> gradle.properties
         echo "android.useAndroidX=true" >> gradle.properties
         
         # 验证修改
-        cat pyramid/build.gradle | grep chaquopy
+        echo "--- Modified pyramid/build.gradle ---"
+        cat pyramid/build.gradle | grep -A 10 'android {'
 
     # 添加 Gradle 缓存
     - name: Cache Gradle dependencies
