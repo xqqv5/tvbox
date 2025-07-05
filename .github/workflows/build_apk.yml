@@ -12,6 +12,8 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        submodules: recursive  # 添加子模块初始化
 
     # 修复 gradlew 权限问题
     - name: Fix gradlew permissions
@@ -25,13 +27,11 @@ jobs:
       with:
         python-version: '3.8'
     
-    # 获取Python路径并设置为环境变量
+    # 获取Python路径
     - name: Get Python path
-      id: python-path
       run: |
         python_path=$(which python3)
         echo "PYTHON_PATH=$python_path" >> $GITHUB_ENV
-        echo "Python path: $python_path"
 
     # 创建缺失的 local.properties 文件
     - name: Create local.properties
@@ -51,32 +51,45 @@ jobs:
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
       with:
-        packages: "platforms;android-33 build-tools;34.0.0 ndk;25.1.8937393 cmake;3.22.1"
+        packages: |
+          platforms;android-33 
+          build-tools;34.0.0 
+          ndk;25.1.8937393 
+          cmake;3.22.1
         accept-android-sdk-licenses: true
-        log-accepted-android-sdk-licenses: true
 
     # 修复项目结构并正确配置Chaquopy
-    - name: Fix project structure and Chaquopy config
+    - name: Configure Chaquopy
       run: |
-        mkdir -p pyramid/build
-        
-        # 在 android 块内添加 Chaquopy 配置
-        # 使用 sed 在 android { 后插入配置
-        sed -i '/android {/a \
-    defaultConfig { \
-        python { \
-            buildPython "'"$PYTHON_PATH"'" \
-            pipOptions.extraIndexUrl "https://chaquo.com/pypi-7.0" \
-        } \
-    }' pyramid/build.gradle
-        
-        echo "org.gradle.caching=true" >> gradle.properties
-        echo "org.gradle.parallel=true" >> gradle.properties
-        echo "android.useAndroidX=true" >> gradle.properties
-        
-        # 验证修改
-        echo "--- Modified pyramid/build.gradle ---"
-        cat pyramid/build.gradle | grep -A 10 'android {'
+        # 项目实际路径在app/目录下
+        if [ -f app/build.gradle ]; then
+          # 使用更可靠的awk添加配置
+          awk -v python_path="$PYTHON_PATH" '
+          /android *{/ {
+            print $0
+            print "    defaultConfig {"
+            print "        python {"
+            print "            buildPython \"" python_path "\""
+            print "            pipOptions.extraIndexUrl \"https://chaquo.com/pypi-7.0\""
+            print "        }"
+            print "    }"
+            next
+          }
+          { print }' app/build.gradle > app/build.gradle.tmp
+          
+          mv app/build.gradle.tmp app/build.gradle
+          
+          # 添加依赖到dependencies块
+          sed -i '/dependencies *{/a \    implementation "com.chaquo.python:gradle:12.0.0"' app/build.gradle
+          
+          # 验证修改
+          echo "--- Modified app/build.gradle ---"
+          grep -A 10 'android *{' app/build.gradle
+          grep -A 5 'dependencies *{' app/build.gradle
+        else
+          echo "ERROR: app/build.gradle not found!"
+          exit 1
+        fi
 
     # 添加 Gradle 缓存
     - name: Cache Gradle dependencies
@@ -92,11 +105,12 @@ jobs:
     # 编译项目
     - name: Build APK
       run: |
-        export GRADLE_OPTS="-Dorg.gradle.daemon=false"
-        ./gradlew assembleDebug --stacktrace --info
+        export GRADLE_OPTS="-Dorg.gradle.daemon=false -Xmx4096m"
+        ./gradlew :app:assembleDebug --stacktrace --info
 
     # 上传生成的 APK
     - name: Upload APK artifact
+      if: success()
       uses: actions/upload-artifact@v4
       with:
         name: TVBoxOS-APK
