@@ -52,46 +52,38 @@ jobs:
           cmake;3.22.1
         accept-android-sdk-licenses: true
 
-    - name: Configure Chaquopy with minimal changes
+    - name: Configure Chaquopy safely
       run: |
-        # 备份原始文件
-        cp app/build.gradle app/build.gradle.bak
-        
-        # 使用安全的插入方式 - 在android块内添加配置
-        awk -v python_path="$PYTHON_PATH" '
-        /android *{/ {
-            print $0
-            found_android = 1
-            next
+        # 完全重写配置方法 - 使用临时文件
+        cat << 'EOF' > chaquopy.gradle
+        android {
+            defaultConfig {
+                python {
+                    buildPython "$System.env.PYTHON_PATH"
+                    pipOptions.extraIndexUrl "https://chaquo.com/pypi-7.0"
+                    staticProxy "chaquopy.utils"
+                }
+                ndk {
+                    abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
+                }
+            }
         }
-        found_android && /defaultConfig *{/ {
-            print $0
-            print "            python {"
-            print "                buildPython \"" python_path "\""
-            print "                pipOptions.extraIndexUrl \"https://chaquo.com/pypi-7.0\""
-            print "                staticProxy \"chaquopy.utils\""
-            print "            }"
-            print "            ndk {"
-            print "                abiFilters \"armeabi-v7a\", \"arm64-v8a\", \"x86\", \"x86_64\""
-            print "            }"
-            next
-        }
-        { print }' app/build.gradle.bak > app/build.gradle
         
-        # 添加依赖
-        sed -i '/dependencies *{/a \    implementation "com.chaquo.python:gradle:12.0.0"' app/build.gradle
+        dependencies {
+            implementation "com.chaquo.python:gradle:12.0.0"
+        }
+        EOF
+        
+        # 将配置追加到build.gradle末尾
+        cat chaquopy.gradle >> app/build.gradle
         
         # 修复关键版本设置
         sed -i 's/compileSdkVersion [0-9]*/compileSdkVersion 33/' app/build.gradle
         sed -i 's/buildToolsVersion .*/buildToolsVersion "34.0.0"/' app/build.gradle
         
         # 验证修改
-        echo "===== Modified app/build.gradle ====="
-        grep -A 15 'android *{' app/build.gradle
-        echo "===== Dependencies ====="
-        grep -A 5 'dependencies *{' app/build.gradle
-        echo "===== Version Settings ====="
-        grep -E 'compileSdkVersion|buildToolsVersion' app/build.gradle
+        echo "===== app/build.gradle (末尾添加内容) ====="
+        tail -n 20 app/build.gradle
 
     - name: Cache Gradle dependencies
       uses: actions/cache@v4
