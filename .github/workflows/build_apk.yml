@@ -1,55 +1,116 @@
-﻿报错如下
-> Configure project :app
-Evaluating project ':app' using build file '/home/runner/work/tvbox/tvbox/app/build.gradle'.
-Compiling build file '/home/runner/work/tvbox/tvbox/app/build.gradle' using SubsetScriptTransformer.
+name: Build TVBoxOS APK
 
-Compiling build file '/home/runner/work/tvbox/tvbox/app/build.gradle' using BuildScriptTransformer.
-FAILURE: Build completed with 2 failures.
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
 
-1: Task failed with an exception.
------------
-* Where:
-Build file '/home/runner/work/tvbox/tvbox/app/build.gradle' line: 3
+jobs:
+  build:
+    runs-on: ubuntu-latest
 
-* What went wrong:
-A problem occurred evaluating project ':app'.
-> No signature of method: build_a63r5e02ombh8gcezjugrh8ov.android() is applicable for argument types: (build_a63r5e02ombh8gcezjugrh8ov$_run_closure1) values: [build_a63r5e02ombh8gcezjugrh8ov$_run_closure1@5dd78e19]
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
 
-* Try:
-> Run with --debug option to get more log output.
-> Run with --scan to get full insights.
+    - name: Fix gradlew permissions
+      run: |
+        chmod +x gradlew
+        ls -l gradlew
 
-* Exception is:
-org.gradle.api.GradleScriptException: A problem occurred evaluating project ':app'.
-	at org.gradle.groovy.scripts.internal.DefaultScriptRunnerFactory$ScriptRunnerImpl.run(DefaultScriptRunnerFactory.java:93)
-	
-Caused by: groovy.lang.MissingMethodException: No signature of method: build_a63r5e02ombh8gcezjugrh8ov.android() is applicable for argument types: (build_a63r5e02ombh8gcezjugrh8ov$_run_closure1) values: [build_a63r5e02ombh8gcezjugrh8ov$_run_closure1@5dd78e19]
-	at build_a63r5e02ombh8gcezjugrh8ov.run(/home/runner/work/tvbox/tvbox/app/build.gradle:3)
-	at org.gradle.groovy.scripts.internal.DefaultScriptRunnerFactory$ScriptRunnerImpl.run(DefaultScriptRunnerFactory.java:91)
-	... 149 more
+    - name: Set up Python 3.8
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.8'
+    
+    - name: Get Python path
+      run: |
+        python_path=$(which python3)
+        echo "PYTHON_PATH=$python_path" >> $GITHUB_ENV
 
-==============================================================================
+    - name: Create local.properties
+      run: |
+        echo "sdk.dir=$ANDROID_HOME" > local.properties
+        echo "ndk.dir=$ANDROID_HOME/ndk/25.1.8937393" >> local.properties
+        cat local.properties
 
-2: Task failed with an exception.
------------
-* What went wrong:
-A problem occurred configuring project ':app'.
-> compileSdkVersion is not specified. Please add it to build.gradle
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
 
-* Try:
-> Run with --debug option to get more log output.
-> Run with --scan to get full insights.
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+      with:
+        packages: |
+          platforms;android-33 
+          build-tools;34.0.0 
+          ndk;25.1.8937393 
+          cmake;3.22.1
+        accept-android-sdk-licenses: true
 
-* Exception is:
-org.gradle.api.ProjectConfigurationException: A problem occurred configuring project ':app'.
-	at org.gradle.configuration.project.LifecycleProjectEvaluator.wrapException(LifecycleProjectEvaluator.java:75)
-Caused by: com.android.builder.errors.EvalIssueException: compileSdkVersion is not specified. Please add it to build.gradle
-	at com.android.builder.errors.IssueReporter.reportError(IssueReporter.kt:109)
-	at java.base/java.lang.Thread.run(Thread.java:840)
+    - name: Configure Chaquopy with minimal changes
+      run: |
+        # 备份原始文件
+        cp app/build.gradle app/build.gradle.bak
+        
+        # 使用安全的插入方式 - 在android块内添加配置
+        awk -v python_path="$PYTHON_PATH" '
+        /android *{/ {
+            print $0
+            found_android = 1
+            next
+        }
+        found_android && /defaultConfig *{/ {
+            print $0
+            print "            python {"
+            print "                buildPython \"" python_path "\""
+            print "                pipOptions.extraIndexUrl \"https://chaquo.com/pypi-7.0\""
+            print "                staticProxy \"chaquopy.utils\""
+            print "            }"
+            print "            ndk {"
+            print "                abiFilters \"armeabi-v7a\", \"arm64-v8a\", \"x86\", \"x86_64\""
+            print "            }"
+            next
+        }
+        { print }' app/build.gradle.bak > app/build.gradle
+        
+        # 添加依赖
+        sed -i '/dependencies *{/a \    implementation "com.chaquo.python:gradle:12.0.0"' app/build.gradle
+        
+        # 修复关键版本设置
+        sed -i 's/compileSdkVersion [0-9]*/compileSdkVersion 33/' app/build.gradle
+        sed -i 's/buildToolsVersion .*/buildToolsVersion "34.0.0"/' app/build.gradle
+        
+        # 验证修改
+        echo "===== Modified app/build.gradle ====="
+        grep -A 15 'android *{' app/build.gradle
+        echo "===== Dependencies ====="
+        grep -A 5 'dependencies *{' app/build.gradle
+        echo "===== Version Settings ====="
+        grep -E 'compileSdkVersion|buildToolsVersion' app/build.gradle
 
-==============================================================================
+    - name: Cache Gradle dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+        key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+        restore-keys: |
+          gradle-${{ runner.os }}-
 
-* Get more help at https://help.gradle.org
+    - name: Build APK
+      run: |
+        export GRADLE_OPTS="-Dorg.gradle.daemon=false -Xmx4096m"
+        ./gradlew clean :app:assembleDebug --stacktrace --info
 
-BUILD FAILED in 26s
-Process completed with exit code 1.
+    - name: Upload APK artifact
+      if: success()
+      uses: actions/upload-artifact@v4
+      with:
+        name: TVBoxOS-APK
+        path: app/build/outputs/apk/debug/*.apk
